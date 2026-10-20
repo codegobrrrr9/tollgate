@@ -1,0 +1,32 @@
+{
+  "name": "tollgate-review",
+  "version": "0.1.0",
+  "description": "A review ledger and loop governor for agent PRs. Counts review rounds, re-flags and findings that were already visible in round one, and gates a PR on open findings and a round cap.",
+  "type": "module",
+  "bin": {
+    "tollgate": "./skills/tollgate/scripts/tollgate.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codegobrrrr9/tollgate"
+  },
+  "keywords": [
+    "code-review",
+    "pull-requests",
+    "agent-review",
+    "review-loop",
+    "claude-code",
+    "codex",
+    "cursor",
+    "github-action",
+    "claude-skills",
+    "agent-skills"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
