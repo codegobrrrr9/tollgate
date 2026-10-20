@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
   <rect width="1600" height="900" fill="#0b0f14"/>
-  <text x="80" y="105" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="36" fill="#c9d4e0" font-weight="bold">Would a cap of 3 rounds have helped? Mostly it would have silenced findings on new code.</text>
+  <text x="80" y="105" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="36" fill="#c9d4e0" font-weight="bold">Would a cap of 3 rounds help? It would mostly silence findings on new code.</text>
   <text x="80" y="152" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="26" fill="#8899aa">82 PRs (6.3% of 1,301) went past round 3. They produced 418 findings after it.</text>
   <rect x="80" y="230" width="1440" height="150" rx="16" fill="#111821" stroke="#1f2a36" stroke-width="2"/>
   <rect x="110" y="262" width="486" height="86" rx="8" fill="#5b6b7c"/>
