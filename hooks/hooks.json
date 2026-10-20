@@ -1,0 +1,12 @@
+{
+  "description": "tollgate: while the branch ledger has open blocking findings the agent is told to resolve or waive them; over the round cap the agent must say it escalated.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.js\"", "timeout": 15 }
+        ]
+      }
+    ]
+  }
+}

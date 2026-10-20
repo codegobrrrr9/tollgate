@@ -1,0 +1,65 @@
+name: tollgate-review
+description: Governs the review loop on agent PRs: counts rounds and re-flags, reports open threads against a round cap.
+author: codegobrrrr9
+branding:
+  icon: shield
+  color: blue
+inputs:
+  cap:
+    description: Round cap. A PR past this round with blocking review threads still open is ESCALATE.
+    required: false
+    default: '3'
+  fail-on:
+    description: 'When to fail the step: "block" (BLOCK or ESCALATE), "escalate" (ESCALATE only) or "never". Default "never": report only.'
+    required: false
+    default: never
+  pr:
+    description: Pull request number. Default is the pull request that triggered the run.
+    required: false
+    default: ''
+  repo:
+    description: Repository as owner/name. Default is the repository running the workflow.
+    required: false
+    default: ''
+  token:
+    description: Token that can read the pull request and its review threads. Default is the job token (needs pull-requests read).
+    required: false
+    default: ${{ github.token }}
+  working-directory:
+    description: Checkout directory, if the action runs from elsewhere. A full-history checkout adds the visible-in-round-one count.
+    required: false
+    default: '.'
+outputs:
+  verdict:
+    description: PASS, BLOCK or ESCALATE.
+    value: ${{ steps.gate.outputs.verdict }}
+  rounds:
+    description: Review rounds so far (distinct commits a reviewer looked at).
+    value: ${{ steps.gate.outputs.rounds }}
+  open:
+    description: Unresolved review threads.
+    value: ${{ steps.gate.outputs.open }}
+  blocking:
+    description: Unresolved review threads that are not marked as nits.
+    value: ${{ steps.gate.outputs.blocking }}
+  cap:
+    description: The round cap used.
+    value: ${{ steps.gate.outputs.cap }}
+  reflags:
+    description: Later findings that repeat an earlier one.
+    value: ${{ steps.gate.outputs.reflags }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      if: ${{ inputs.pr != '' || github.event.pull_request.number != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        TOLLGATE_PR: ${{ inputs.pr || github.event.pull_request.number }}
+        TOLLGATE_REPO: ${{ inputs.repo || github.repository }}
+        TOLLGATE_CAP: ${{ inputs.cap }}
+        TOLLGATE_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        node "${GITHUB_ACTION_PATH}/skills/tollgate/scripts/tollgate.js" gate --github --pr "${TOLLGATE_PR}" --repo "${TOLLGATE_REPO}" --cap "${TOLLGATE_CAP}" --fail-on "${TOLLGATE_FAIL_ON}"

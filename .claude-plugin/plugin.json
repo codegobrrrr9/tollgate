@@ -1,0 +1,10 @@
+{
+  "name": "tollgate",
+  "version": "0.1.0",
+  "description": "A review ledger and loop governor for agent PRs: findings, fixes, waivers, re-flags, a round cap that escalates to a human.",
+  "author": { "name": "codegobrrrr9", "url": "https://github.com/codegobrrrr9" },
+  "homepage": "https://github.com/codegobrrrr9/tollgate",
+  "repository": "https://github.com/codegobrrrr9/tollgate",
+  "license": "MIT",
+  "keywords": ["code-review", "review-loop", "pull-requests", "agent-review", "claude-code"]
+}

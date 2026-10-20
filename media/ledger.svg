@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#0b0f14"/>
+  <text x="80" y="105" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="36" fill="#c9d4e0" font-weight="bold">The fix did not work. The ledger says so.</text>
+  <text x="80" y="152" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="26" fill="#8899aa">A real session of tollgate, from the CLI</text>
+  <rect x="80" y="195" width="1440" height="600" rx="16" fill="#111821" stroke="#1f2a36" stroke-width="2"/>
+  <g font-family="Consolas, 'Courier New', monospace" font-size="25">
+    <text x="115" y="250" fill="#8899aa">$ tollgate add --file src/cart.js --line 42 --text "Handle the empty cart…" --blocking</text>
+    <text x="115" y="286" fill="#c9d4e0">added t-1 (round 1)</text>
+    <text x="115" y="340" fill="#8899aa">$ tollgate resolve t-1 --fixed 4f2a9c1</text>
+    <text x="115" y="376" fill="#c9d4e0">t-1 fixed in 4f2a9c1</text>
+    <text x="115" y="430" fill="#8899aa">$ tollgate round        <tspan fill="#6b7a8c"># the author pushed; the reviewer looks again</tspan></text>
+    <text x="115" y="466" fill="#c9d4e0">round 2</text>
+    <text x="115" y="520" fill="#8899aa">$ tollgate add --file src/cart.js --line 42 --text "Empty cart is still not handled…"</text>
+    <text x="115" y="556" fill="#ff6b6b" font-weight="bold">REOPENED t-3: fix incomplete, t-1 was fixed in 4f2a9c1</text>
+    <text x="115" y="640" fill="#8899aa">$ tollgate status      <tspan fill="#6b7a8c"># two rounds later</tspan></text>
+    <text x="115" y="676" fill="#c9d4e0">tollgate  feature/cart  ·  round 4 of cap 3  ·  <tspan fill="#ffd166" font-weight="bold">ESCALATE</tspan>  ·  open 2 (1 blocking)  ·  reopened 1</text>
+    <text x="115" y="740" fill="#6b7a8c">gate exit code 3: a human decides. The agent is told not to start round 5.</text>
+  </g>
+  <text x="80" y="850" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#6b7a8c">github.com/codegobrrrr9/tollgate · ledger, gate and Stop hook · re-flags are recorded, never refused</text>
+</svg>

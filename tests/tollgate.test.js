@@ -89,6 +89,22 @@ test('analysis views: human-only and bot-only rebuild the rounds from their own 
   assert.equal(analyzePr(cs, { view: 'bot' }).rounds.length, 2);
 });
 
+test('views are independent: marks made in the all view do not leak into the human or bot view', () => {
+  // all view: round 1 human H0, round 2 bot B, round 3 human H1 (repeats B). human view: H0 round 1, H1 round 2, and
+  // H1 has nothing earlier in that view to repeat. With shared objects H1 kept the flag set in the all view.
+  const cs = [
+    mk({ review: 1, commit: 'c1', path: 'a.js', user: 'alice', bot: false, body: 'Rename this helper so it says what it returns' }),
+    mk({ review: 2, commit: 'c2', path: 'a.js', user: 'bot', bot: true, body: 'The loop never releases the connection handle before returning early' }),
+    mk({ review: 3, commit: 'c3', path: 'a.js', user: 'alice', bot: false, body: 'Connection handle still not released before returning early from the loop' }),
+  ];
+  const all = analyzePr(cs, { view: 'all' });
+  assert.equal(all.rounds.length, 3); assert.equal(all.reflagged, 1, 'the human finding repeats the bot finding');
+  const human = analyzePr(cs, { view: 'human' });
+  assert.equal(human.rounds.length, 2); assert.equal(human.late, 1);
+  assert.equal(human.reflagged, 0, 'in the human view there is no earlier finding to repeat');
+  assert.ok(cs.every(c => c.reflag === undefined && c.anchor === undefined && c.round === undefined), 'the input comments are untouched');
+});
+
 test('verdict: converging, looping, over cap', () => {
   const R = (counts) => counts.map((n, i) => ({ n: i + 1, findings: Array.from({ length: n }, () => ({})) }));
   assert.equal(verdict(R([5, 2, 1]), 0), 'CONVERGING');

@@ -6,7 +6,12 @@
 // review comments and answers, with evidence.
 //
 //   tollgate pr <number|url> [--repo owner/name] [--dir <clone>] [--cap 3] [--json]
-//   tollgate scan --repo owner/name [--days 180] [--dir <clone>] [--wait] [--no-fetch] [--json]
+//   tollgate scan --repo owner/name [--days 180] [--since <iso>] [--dir <clone>] [--wait] [--no-fetch] [--json]
+//
+//   tollgate add --file f --line n --text "..." [--code "<the line>"] [--nit|--blocking] [--reason "..."]
+//   tollgate resolve <id> --fixed <sha> | --waive "<reason>"
+//   tollgate round | status | gate [--cap 3] [--json]          live loop ledger, .tollgate/ledger.jsonl
+//   tollgate gate --github --pr <n> [--repo o/r] [--fail-on block|escalate|never]   from review threads (token needed)
 //
 // Method (full text in references/method.md):
 //   round     a distinct original_commit_id among a PR's inline review comments, in order of first comment.
@@ -18,8 +23,8 @@
 // Zero dependencies. Node 18+. GITHUB_TOKEN (or GH_TOKEN) raises the API limit from 60 to 5000 requests an hour.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // ---------- helpers ----------
@@ -110,7 +115,7 @@ export async function crawlComments(root, repo, { since, cache = true, api, wait
   const file = cache ? cachePath(root, `comments-${repo.replace('/', '__')}.json`) : null;
   let st = cache ? readJson(file) : null;
   if (!st || st.since !== since) st = { repo, since, items: {}, nextPage: 1, done: false, fetched_at: null };
-  if (noFetch) return { items: Object.values(st.items), done: st.done, partial: st.done ? null : 'cache only, crawl incomplete', fetchedAt: st.fetched_at };
+  if (noFetch) { const c = cache ? readJson(file) : null; if (c) return { items: Object.values(c.items), done: c.done, partial: c.done ? null : 'cache only, crawl incomplete', fetchedAt: c.fetched_at, since: c.since }; return { items: [], done: false, partial: 'no cache', fetchedAt: null, since }; }
   if (st.done && Date.now() - Date.parse(st.fetched_at || 0) > 3600e3) st.done = false; // re-read the last page for new comments
   const save = () => { if (cache) writeFileSync(file, JSON.stringify(st)); };
   let partial = null;
@@ -128,7 +133,7 @@ export async function crawlComments(root, repo, { since, cache = true, api, wait
     save();
   }
   save();
-  return { items: Object.values(st.items), done: st.done, partial, fetchedAt: st.fetched_at };
+  return { items: Object.values(st.items), done: st.done, partial, fetchedAt: st.fetched_at, since: st.since };
 }
 
 export async function fetchPrComments(repo, pr, { api } = {}) {
@@ -190,11 +195,13 @@ export function parseHunks(diff) {
   return ranges;
 }
 const hasCommit = (dir, sha) => gitOk(['cat-file', '-e', `${sha}^{commit}`], dir);
-const hasPath = (dir, sha, path) => gitOk(['cat-file', '-e', `${sha}:${path}`], dir);
+// ls-tree reads trees only; `cat-file -e sha:path` would fetch the blob in a blobless clone
+const hasPath = (dir, sha, path) => run(['ls-tree', '--name-only', sha, '--', path], dir).stdout.trim() === path;
 
 // Fetch refs/pull/N/head for the given PR numbers into refs/tollgate/pr/N. One bad ref aborts a batch, so bisect.
 export function fetchPrHeads(dir, prs, { shallowSince = null } = {}) {
-  const nums = uniq(prs).filter(Boolean);
+  // refs fetched on an earlier run are kept: a rerun (or a frozen --no-fetch scan) does no network work for them
+  const nums = uniq(prs).filter(Boolean).filter(n => !gitOk(['rev-parse', '--verify', '--quiet', `refs/tollgate/pr/${n}`], dir));
   const attempt = (list) => {
     if (!list.length) return;
     const specs = list.map(n => `+refs/pull/${n}/head:refs/tollgate/pr/${n}`);
@@ -229,7 +236,8 @@ export function verdict(rounds, reflagCount, cap = 3) {
 }
 
 export function analyzePr(comments, { cap = 3, view = 'all', dir = null, memo } = {}) {
-  let fs = comments.filter(isFinding);
+  // copies: each view marks its own re-flags and anchors; sharing the objects leaked one view's marks into the next
+  let fs = comments.filter(isFinding).map(f => ({ ...f }));
   if (view === 'human') fs = fs.filter(f => !f.bot); else if (view === 'bot') fs = fs.filter(f => f.bot);
   fs = fs.slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
   const rounds = buildRounds(fs);
@@ -274,9 +282,10 @@ export function goNoGo(pooled) {
   return { go: a && b, a, b, thresholds: 'at least 10% of PRs reach 3+ rounds AND (at least 25% of round 2+ findings are visible in round one OR at least 10% are re-flags)' };
 }
 
-export async function scanRepo({ repo, days = 180, dir = null, root = dir || process.cwd(), cap = 3, cache = true, api, wait = false, noFetch = false, log = () => {} } = {}) {
-  const since = ISO(Date.now() - days * 86400e3);
-  const crawl = await crawlComments(root, repo, { since, cache, api, wait, noFetch, log });
+export async function scanRepo({ repo, days = 180, since: sinceOverride = null, dir = null, root = dir || process.cwd(), cap = 3, cache = true, api, wait = false, noFetch = false, log = () => {} } = {}) {
+  const wanted = sinceOverride || ISO(Math.floor((Date.now() - days * 86400e3) / 86400e3) * 86400e3);
+  const crawl = await crawlComments(root, repo, { since: wanted, cache, api, wait, noFetch, log });
+  const since = crawl.since || wanted;
   const guard = ISO(Date.parse(since) + BOUNDARY_DAYS * 86400e3);
   const byPr = new Map();
   for (const c of crawl.items) if (c.pr) { if (!byPr.has(c.pr)) byPr.set(c.pr, []); byPr.get(c.pr).push(c); }
@@ -285,7 +294,7 @@ export async function scanRepo({ repo, days = 180, dir = null, root = dir || pro
   if (dir && prs.length) {
     const multi = prs.filter(([, cs]) => buildRounds(cs.filter(isFinding).sort((a, b) => a.created_at.localeCompare(b.created_at))).length >= 2).map(([n]) => n);
     const shallow = git(['rev-parse', '--is-shallow-repository'], dir) === 'true';
-    log(`fetching ${multi.length} PR heads`); fetchPrHeads(dir, multi, { shallowSince: shallow ? ISO(Date.parse(since) - 30 * 86400e3).slice(0, 10) : null });
+    log(`PR heads: ${multi.length} multi-round PRs`); fetchPrHeads(dir, multi, { shallowSince: shallow ? ISO(Date.parse(since) - 30 * 86400e3).slice(0, 10) : null });
   }
   const memo = new Map(), views = {};
   for (const view of ['all', 'human', 'bot']) {
@@ -319,6 +328,125 @@ export function formatScan(r) {
     if (!v.prs) { L.push(`  ${name.padEnd(5)} no PRs`); continue; }
     L.push(`  ${name.padEnd(5)} ${String(v.prs).padStart(4)} PRs  rounds 1/2/3/4/5+: ${[1, 2, 3, 4, '5+'].map(k => v.rounds[k]).join('/')}  3+: ${v.pct3}%  5+: ${v.pct5}%  max ${v.max}  late ${v.late}  visible ${v.visiblePct}% (n=${v.visible + v.isNew}, unknown ${v.unknown})  re-flag ${v.reflagPct}%`);
   }
+  return L.join('\n');
+}
+
+
+// ---------- GraphQL: review-thread resolution (REST does not expose it) ----------
+export async function ghql(query, variables, { token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN, api = process.env.GITHUB_API_URL || 'https://api.github.com' } = {}) {
+  if (!token) throw new Error('GraphQL needs a token to read review threads: set GITHUB_TOKEN (the Action passes github.token)');
+  const url = process.env.GITHUB_GRAPHQL_URL && api === (process.env.GITHUB_API_URL || 'https://api.github.com') ? process.env.GITHUB_GRAPHQL_URL : api.replace(/\/v3\/?$/, '') + '/graphql';
+  const res = await fetch(url, { method: 'POST', headers: { 'User-Agent': 'tollgate', Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ query, variables }) });
+  if (!res.ok) throw new Error('GitHub GraphQL ' + res.status);
+  const j = await res.json();
+  if (j.errors) throw new Error('GitHub GraphQL: ' + j.errors.map(e => e.message).join('; '));
+  return j.data;
+}
+const THREADS_QUERY = 'query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{isResolved isOutdated path line comments(first:1){nodes{body url author{login}}}}}}}}';
+const NIT = /^\s*(\*\*)?\[?(nit|nitpick|optional|minor)\b/i;
+export async function fetchThreads(repo, pr, { api, token } = {}) {
+  const [owner, name] = repo.split('/'); const out = []; let after = null;
+  for (;;) {
+    const d = await ghql(THREADS_QUERY, { owner, name, number: pr, after }, { api, token });
+    const t = d.repository?.pullRequest?.reviewThreads; if (!t) throw new Error('pull request ' + repo + '#' + pr + ' not found');
+    for (const n of t.nodes) { const c = n.comments?.nodes?.[0] || {}; out.push({ resolved: !!n.isResolved, outdated: !!n.isOutdated, path: n.path, line: n.line, body: c.body || '', url: c.url, by: c.author?.login || '', nit: NIT.test(c.body || '') }); }
+    if (!t.pageInfo.hasNextPage) break; after = t.pageInfo.endCursor;
+  }
+  return out;
+}
+
+// The verdict, one definition for the local ledger and for GitHub threads.
+// ESCALATE: over the round cap with blocking findings still open (a human decides; forcing more rounds is the loop).
+export function decide({ round, cap, blocking }) {
+  if (blocking > 0 && round > cap) return 'ESCALATE';
+  if (blocking > 0) return 'BLOCK';
+  return 'PASS';
+}
+export const EXIT = { PASS: 0, BLOCK: 1, ESCALATE: 3 };
+
+export async function gateGithub({ repo, pr, cap = 3, dir = null, api, token } = {}) {
+  const comments = await fetchPrComments(repo, pr, { api });
+  const threads = await fetchThreads(repo, pr, { api, token });
+  if (dir) fetchPrHeads(dir, [pr]);
+  const a = analyzePr(comments, { cap, dir });
+  const unresolved = threads.filter(t => !t.resolved);
+  const blocking = unresolved.filter(t => !t.nit).length;
+  const rounds = Math.max(a.rounds.length, 1);
+  return { pr, repo, cap, rounds, threads: threads.length, open: unresolved.length, blocking, nits: unresolved.length - blocking, reflags: a.reflagged, late: a.late, visible: a.visible, isNew: a.isNew, verdict: decide({ round: rounds, cap, blocking }), unresolved };
+}
+
+// ---------- live-loop ledger (.tollgate/ledger.jsonl, append-only) ----------
+export const ledgerFile = (root) => join(root, '.tollgate', 'ledger.jsonl');
+export function currentBranch(root) { return git(['branch', '--show-current'], root) || 'HEAD'; }
+export function readConfig(root) { const c = readJson(join(root, '.tollgate.json')) || {}; return { cap: Number.isInteger(c.cap) && c.cap > 0 ? c.cap : 3 }; }
+function appendEvent(root, ev) { const f = ledgerFile(root); mkdirSync(dirname(f), { recursive: true }); appendFileSync(f, JSON.stringify({ t: new Date().toISOString(), ...ev }) + '\n'); }
+export function hasLedger(root, branch) {
+  try { return readFileSync(ledgerFile(root), 'utf8').split('\n').some(l => { try { return JSON.parse(l).branch === branch; } catch { return false; } }); } catch { return false; }
+}
+export function loadLedger(root, branch) {
+  const st = { branch, round: 1, findings: new Map(), adds: 0, repeats: 0 };
+  let raw = ''; try { raw = readFileSync(ledgerFile(root), 'utf8'); } catch { return st; }
+  for (const line of raw.split('\n')) {
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    if (e.branch !== branch) continue;
+    if (e.type === 'round') st.round++;
+    else if (e.type === 'add') { st.adds++; st.findings.set(e.id, { id: e.id, file: e.file, line: e.line ?? null, text: e.text, code: e.code || '', severity: e.severity || 'blocking', round: e.round, status: 'open', reflagOf: e.reflagOf || null, reopens: e.reopens || null, reason: e.reason || null, fixSha: e.reopens ? (st.findings.get(e.reopens)?.fixSha || null) : null, waiver: null, repeats: 0 }); }
+    else if (e.type === 'repeat') { const f = st.findings.get(e.of); if (f) { f.repeats++; st.repeats++; } }
+    else if (e.type === 'fixed') { const f = st.findings.get(e.id); if (f) { f.status = 'fixed'; f.fixSha = e.sha; } }
+    else if (e.type === 'waived') { const f = st.findings.get(e.id); if (f) { f.status = 'waived'; f.waiver = e.reason; } }
+  }
+  return st;
+}
+const matches = (a, b) => {
+  if (a.file !== b.file) return false;
+  const la = normLine(a.code), lb = normLine(b.code);
+  if (la.length >= 15 && la === lb) return true;
+  const A = new Set(tokens(a.text)), B = new Set(tokens(b.text)); let shared = 0; for (const w of A) if (B.has(w)) shared++;
+  return shared >= 3 && shared >= 0.5 * Math.min(A.size, B.size);
+};
+// Re-flags are always recorded. A repeat of an open finding bumps its counter; a repeat of a fixed one reopens it
+// ("fix incomplete", the original fix sha is kept); a repeat of a waived one needs a stated reason.
+export function addFinding(root, branch, { file, line = null, text, code = '', severity = 'blocking', reason = null }) {
+  if (!file || !text) throw new Error('add needs --file and --text');
+  const st = loadLedger(root, branch);
+  const earlier = [...st.findings.values()].reverse().find(f => matches(f, { file, text, code }));
+  const id = 't-' + (st.adds + 1);
+  if (earlier && earlier.status === 'open') { appendEvent(root, { branch, type: 'repeat', of: earlier.id, round: st.round, text }); return { kind: 'repeat', id: earlier.id, of: earlier.id, round: earlier.round, now: st.round }; }
+  if (earlier && earlier.status === 'waived' && !reason) return { kind: 'needs-reason', id: null, of: earlier.id, waiver: earlier.waiver };
+  appendEvent(root, { branch, type: 'add', id, file, line, text, code, severity, round: st.round, reflagOf: earlier ? earlier.id : null, reopens: earlier && earlier.status === 'fixed' ? earlier.id : null, reason: earlier && earlier.status === 'waived' ? reason : null });
+  return { kind: !earlier ? 'new' : earlier.status === 'fixed' ? 'reopened' : 'reflag-waived', id, of: earlier ? earlier.id : null, fixSha: earlier && earlier.status === 'fixed' ? earlier.fixSha : null, waiver: earlier && earlier.status === 'waived' ? earlier.waiver : null, round: st.round };
+}
+export function resolveFinding(root, branch, id, { fixed = null, waive = null }) {
+  const st = loadLedger(root, branch); const f = st.findings.get(id);
+  if (!f) throw new Error('no finding ' + id + ' on branch ' + branch);
+  if (f.status !== 'open') throw new Error(id + ' is already ' + f.status);
+  if (fixed) { appendEvent(root, { branch, type: 'fixed', id, sha: fixed }); return { id, status: 'fixed', sha: fixed }; }
+  if (waive && waive.trim().length >= 5) { appendEvent(root, { branch, type: 'waived', id, reason: waive.trim() }); return { id, status: 'waived', reason: waive.trim() }; }
+  throw new Error('resolve needs --fixed <sha> or --waive "<reason of at least 5 characters>"');
+}
+export function nextRound(root, branch) { appendEvent(root, { branch, type: 'round' }); return loadLedger(root, branch).round; }
+export function gateLocal(root, branch, cap = readConfig(root).cap) {
+  const st = loadLedger(root, branch); const all = [...st.findings.values()];
+  const open = all.filter(f => f.status === 'open'), blocking = open.filter(f => f.severity !== 'nit');
+  const reopened = all.filter(f => f.reopens).length;
+  return { branch, round: st.round, cap, open: open.length, blocking: blocking.length, nits: open.length - blocking.length, fixed: all.filter(f => f.status === 'fixed').length, waived: all.filter(f => f.status === 'waived').length, reopened, repeats: st.repeats, verdict: decide({ round: st.round, cap, blocking: blocking.length }), openFindings: open };
+}
+export function formatStatus(g) {
+  const L = [`tollgate  ${g.branch}  ·  round ${g.round} of cap ${g.cap}  ·  ${g.verdict}  ·  open ${g.open} (${g.blocking} blocking)  ·  fixed ${g.fixed}  ·  waived ${g.waived}  ·  reopened ${g.reopened}  ·  repeats ${g.repeats}`];
+  for (const f of g.openFindings.slice(0, 12)) L.push(`  ${f.id}  ${f.severity.padEnd(8)} ${f.file}${f.line ? ':' + f.line : ''}  "${short(f.text, 90)}"  (round ${f.round}${f.reopens ? ', REOPENED: fix incomplete, was fixed in ' + String(f.fixSha || '?').slice(0, 7) : ''})`);
+  if (g.openFindings.length > 12) L.push(`  … ${g.openFindings.length - 12} more`);
+  return L.join('\n');
+}
+export function formatGate(g) {
+  const L = [`tollgate gate  PR ${g.repo}#${g.pr}  ·  ${g.verdict}  ·  round ${g.rounds} of cap ${g.cap}  ·  ${g.open} unresolved threads (${g.blocking} blocking, ${g.nits} nit)  ·  ${g.reflags} re-flagged`];
+  for (const t of g.unresolved.filter(t => !t.nit).slice(0, 10)) L.push(`  ${t.path}${t.line ? ':' + t.line : ''}  ${t.by}  "${short(t.body, 90)}"  ${t.url || ''}`);
+  if (g.verdict === 'ESCALATE') L.push(`Round ${g.rounds} is over the cap of ${g.cap} with ${g.blocking} blocking threads still open: a human decides. Another automated round is the loop tollgate exists to stop.`);
+  return L.join('\n');
+}
+export function gateMarkdown(g) {
+  const L = [`### tollgate: ${g.verdict}`, '', `PR #${g.pr} is in round **${g.rounds}** (cap ${g.cap}). ${g.open} unresolved review threads: **${g.blocking} blocking**, ${g.nits} nit. ${g.reflags} later finding(s) repeat an earlier one; ${g.visible} of ${g.visible + g.isNew} late findings were already visible in round one.`];
+  if (g.blocking) { L.push('', '| thread | by | finding |', '|---|---|---|'); for (const t of g.unresolved.filter(t => !t.nit).slice(0, 15)) L.push(`| ${t.path}${t.line ? ':' + t.line : ''} | ${t.by} | ${short(t.body, 100).replace(/\|/g, '\\|')} |`); }
+  if (g.verdict === 'ESCALATE') L.push('', 'Over the round cap with blocking findings open. A human decides whether to keep going.');
   return L.join('\n');
 }
 
@@ -357,11 +485,40 @@ async function main(a) {
     const repo = githubRepo(root, flag('--repo'));
     if (!repo) { console.error('tollgate scan: pass --repo owner/name'); process.exit(2); }
     const dir = dirFlag && gitOk(['rev-parse', '--git-dir'], dirFlag) ? dirFlag : null;
-    const r = await scanRepo({ repo, days: Number(flag('--days', 180)), dir, root, cap, api: flag('--api'), wait: has('--wait'), noFetch: has('--no-fetch'), cache: !has('--no-cache'), log: has('--quiet') ? () => {} : (m) => console.error(m) });
+    const r = await scanRepo({ repo, days: Number(flag('--days', 180)), since: flag('--since'), dir, root, cap, api: flag('--api'), wait: has('--wait'), noFetch: has('--no-fetch'), cache: !has('--no-cache'), log: has('--quiet') ? () => {} : (m) => console.error(m) });
     console.log(json ? JSON.stringify(r, (k, v) => (k === 'results' ? undefined : v), 2) : formatScan(r));
     return;
   }
-  console.error(`tollgate: unknown command "${sub}". Try: pr, scan`); process.exit(2);
+  if (sub === 'add' || sub === 'resolve' || sub === 'round' || sub === 'status' || (sub === 'gate' && !has('--github'))) {
+    const branch = flag('--branch') || currentBranch(root);
+    const cfgCap = has('--cap') ? cap : readConfig(root).cap;
+    if (sub === 'add') {
+      const r = addFinding(root, branch, { file: flag('--file'), line: flag('--line') ? Number(flag('--line')) : null, text: flag('--text'), code: flag('--code', ''), severity: has('--nit') ? 'nit' : 'blocking', reason: flag('--reason') });
+      if (r.kind === 'needs-reason') { console.error('tollgate: ' + r.of + ' was waived ("' + r.waiver + '"). Raising it again needs --reason saying why the waiver no longer holds.'); process.exit(4); }
+      const msg = { new: 'added ' + r.id + ' (round ' + r.round + ')', repeat: 'REPEAT of ' + r.of + ' (still open, raised in round ' + r.round + '; now round ' + r.now + ')', reopened: 'REOPENED ' + r.id + ': fix incomplete, ' + r.of + ' was fixed in ' + String(r.fixSha || '?').slice(0, 7), 'reflag-waived': 'added ' + r.id + ' (re-flag of waived ' + r.of + ': "' + r.waiver + '")' }[r.kind];
+      console.log(json ? JSON.stringify(r) : msg); return;
+    }
+    if (sub === 'resolve') { const r = resolveFinding(root, branch, a[1], { fixed: flag('--fixed'), waive: flag('--waive') }); console.log(json ? JSON.stringify(r) : r.id + ' ' + r.status + (r.sha ? ' in ' + r.sha.slice(0, 7) : ': ' + r.reason)); return; }
+    if (sub === 'round') { console.log('round ' + nextRound(root, branch)); return; }
+    const g = gateLocal(root, branch, cfgCap);
+    if (sub === 'status') { console.log(json ? JSON.stringify(g, null, 2) : formatStatus(g)); return; }
+    console.log(json ? JSON.stringify(g, null, 2) : formatStatus(g)); process.exitCode = EXIT[g.verdict]; return;
+  }
+  if (sub === 'gate') {
+    const t = parseTarget(flag('--pr') || process.env.TOLLGATE_PR);
+    const repo = (t && t.repo) || flag('--repo') || process.env.GITHUB_REPOSITORY || githubRepo(root);
+    if (!t || !repo) { console.error('tollgate gate --github: pass --pr <number> and --repo owner/name (or run it in an Action)'); process.exit(2); }
+    // anchor against the local clone only when it is the repository being gated
+    const dir = dirFlag || (isClone && githubRepo(root) === repo && gitOk(['rev-parse', '--git-dir'], root) ? root : null);
+    const g = await gateGithub({ repo, pr: t.pr, cap, dir, api: flag('--api') });
+    console.log(json ? JSON.stringify(g, null, 2) : formatGate(g));
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, ['verdict=' + g.verdict, 'rounds=' + g.rounds, 'open=' + g.open, 'blocking=' + g.blocking, 'cap=' + g.cap, 'reflags=' + g.reflags].join('\n') + '\n');
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, gateMarkdown(g) + '\n');
+    const failOn = flag('--fail-on', 'never');
+    if ((failOn === 'block' && g.verdict !== 'PASS') || (failOn === 'escalate' && g.verdict === 'ESCALATE')) process.exitCode = EXIT[g.verdict];
+    return;
+  }
+  console.error('tollgate: unknown command "' + sub + '". Try: pr, scan, add, resolve, round, status, gate'); process.exit(2);
 }
 if (process.argv[1] && samePath(resolve(process.argv[1]), fileURLToPath(import.meta.url))) {
   main(process.argv.slice(2)).catch(e => { console.error(`tollgate: ${e.message}`); process.exit(1); });

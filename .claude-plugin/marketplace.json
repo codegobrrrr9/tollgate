@@ -1,0 +1,18 @@
+{
+  "name": "tollgate",
+  "owner": { "name": "codegobrrrr9", "url": "https://github.com/codegobrrrr9" },
+  "metadata": { "description": "A review ledger and loop governor for agent PRs.", "version": "0.1.0" },
+  "plugins": [
+    {
+      "name": "tollgate",
+      "source": "./",
+      "description": "Keeps a findings ledger for the review loop, escalates to a human at the round cap, and analyses any GitHub PR for rounds, repeats and findings already visible in round one. Adds /tollgate and a Stop hook.",
+      "version": "0.1.0",
+      "author": { "name": "codegobrrrr9" },
+      "homepage": "https://github.com/codegobrrrr9/tollgate",
+      "license": "MIT",
+      "keywords": ["code-review", "review-loop", "pull-requests"],
+      "category": "productivity"
+    }
+  ]
+}

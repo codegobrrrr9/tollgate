@@ -1,0 +1,6 @@
+{
+  "name": "tollgate",
+  "version": "0.1.0",
+  "description": "A review ledger and loop governor for agent PRs.",
+  "contextFileName": "AGENTS.md"
+}

@@ -2,7 +2,9 @@
 // Benchmark: how many review rounds do PRs on real, review-heavy repos take, how much of what comes late was
 // already visible in round one, and what is raised twice? No model runs; public GitHub data plus local git.
 //
-//   node benchmarks/scan.js [--days 180] [--repos owner/a,owner/b] [--no-wait]
+//   node benchmarks/scan.js [--days 180] [--repos owner/a,owner/b] [--no-wait] [--frozen]
+//   --frozen re-analyses the cached comments and already-fetched PR heads with no network (same window) and
+//   appends new rows; the report uses the latest row per repo.
 //
 // Clones each repo blobless and shallow (benchmarks/work/<owner__repo>), crawls review comments with a resumable
 // cache (60 requests an hour unauthenticated; set GITHUB_TOKEN yourself to go faster), anchors round 2+ findings
@@ -33,8 +35,8 @@ for (const repo of repos) {
     if (r.status !== 0) { log(`clone failed for ${repo}: ${r.stderr.slice(0, 200)}`); continue; }
   }
   const t0 = Date.now();
-  const r = await scanRepo({ repo, days, dir, root: dir, wait: !a.includes('--no-wait'), log });
-  appendFileSync(join(here, 'scan.jsonl'), JSON.stringify({ ...r, views: Object.fromEntries(Object.entries(r.views).map(([k, v]) => [k, { ...v, results: undefined }])), seconds: Math.round((Date.now() - t0) / 1000) }) + '\n');
+  const r = await scanRepo({ repo, days, dir, root: dir, wait: !a.includes('--no-wait'), noFetch: a.includes('--frozen'), log });
+  appendFileSync(join(here, 'scan.jsonl'), JSON.stringify({ ...r, views: Object.fromEntries(Object.entries(r.views).map(([k, v]) => [k, { ...v, results: undefined }])), seconds: Math.round((Date.now() - t0) / 1000), frozen: a.includes('--frozen') || undefined }) + '\n');
   results.push({ repo, r });
   console.log(formatScan(r));
 }

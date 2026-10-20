@@ -1,0 +1,10 @@
+# tollgate
+
+Rules from https://github.com/codegobrrrr9/tollgate. Copy `skills/tollgate/scripts/tollgate.js` from the repo to `scripts/tollgate.js`.
+
+1. Reviewer: report every finding in one pass, ranked, each marked `--blocking` or `--nit`, with file and line: `node scripts/tollgate.js add --file f --line n --text "..." --blocking`. Do not hold findings back for the next round.
+2. Never re-raise a resolved or waived finding without saying why. `REOPENED: fix incomplete` means the fix did not work; a waived finding needs `--reason`.
+3. Author: answer every open finding with `resolve <id> --fixed <sha>` or `--waive "<reason>"`. Never say "addressed" unless the ledger shows it.
+4. After pushing fixes run `node scripts/tollgate.js round`. Before you say a review is done run `status` and end with its line.
+5. ESCALATE means stop: do not start another round. Say you escalated, give the number of blocking findings open, and list them.
+6. Never edit `.tollgate/` by hand.

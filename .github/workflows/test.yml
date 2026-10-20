@@ -14,3 +14,25 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+  # the action from this checkout, against a real public PR with several review rounds (report only)
+  self:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: ./
+        id: tollgate
+        with:
+          repo: honojs/hono
+          pr: '4719'
+      - run: |
+          echo "verdict=${{ steps.tollgate.outputs.verdict }} rounds=${{ steps.tollgate.outputs.rounds }} open=${{ steps.tollgate.outputs.open }} blocking=${{ steps.tollgate.outputs.blocking }}"
+          case "${{ steps.tollgate.outputs.verdict }}" in PASS|BLOCK|ESCALATE) ;; *) echo "unexpected verdict"; exit 1 ;; esac
+          test "${{ steps.tollgate.outputs.rounds }}" -ge 1
