@@ -397,10 +397,14 @@ export function loadLedger(root, branch) {
   }
   return st;
 }
-const matches = (a, b) => {
+// A word match alone is only a repeat across rounds, or at the same line. Two different things said about one file in one
+// pass share words by accident, and merging them would silently drop a finding (seen in a real session): a wrongly kept
+// finding is visible and costs one waiver; a wrongly merged one is invisible.
+const matches = (a, b, round) => {
   if (a.file !== b.file) return false;
   const la = normLine(a.code), lb = normLine(b.code);
   if (la.length >= 15 && la === lb) return true;
+  if (!(a.round < round) && !(a.line != null && a.line === b.line)) return false;
   const A = new Set(tokens(a.text)), B = new Set(tokens(b.text)); let shared = 0; for (const w of A) if (B.has(w)) shared++;
   return shared >= 3 && shared >= 0.5 * Math.min(A.size, B.size);
 };
@@ -409,7 +413,7 @@ const matches = (a, b) => {
 export function addFinding(root, branch, { file, line = null, text, code = '', severity = 'blocking', reason = null }) {
   if (!file || !text) throw new Error('add needs --file and --text');
   const st = loadLedger(root, branch);
-  const earlier = [...st.findings.values()].reverse().find(f => matches(f, { file, text, code }));
+  const earlier = [...st.findings.values()].reverse().find(f => matches(f, { file, line, text, code }, st.round));
   const id = 't-' + (st.adds + 1);
   if (earlier && earlier.status === 'open') { appendEvent(root, { branch, type: 'repeat', of: earlier.id, round: st.round, text }); return { kind: 'repeat', id: earlier.id, of: earlier.id, round: earlier.round, now: st.round }; }
   if (earlier && earlier.status === 'waived' && !reason) return { kind: 'needs-reason', id: null, of: earlier.id, waiver: earlier.waiver };

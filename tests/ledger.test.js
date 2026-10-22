@@ -34,6 +34,7 @@ test('a nit never blocks', () => {
 test('re-flag of an OPEN finding is a repeat: counted, no second finding', () => {
   const d = repo();
   addFinding(d, B, { file: 'a.js', text: 'Handle the empty list case before indexing into the array' });
+  nextRound(d, B);
   const r = addFinding(d, B, { file: 'a.js', text: 'You still need to handle the empty list case before indexing the array' });
   assert.equal(r.kind, 'repeat'); assert.equal(r.of, 't-1');
   const g = gateLocal(d, B); assert.equal(g.open, 1); assert.equal(g.repeats, 1);
@@ -43,6 +44,7 @@ test('re-flag of a FIXED finding is recorded as REOPENED: fix incomplete, with t
   const d = repo();
   addFinding(d, B, { file: 'a.js', text: 'Handle the empty list case before indexing into the array' });
   resolveFinding(d, B, 't-1', { fixed: 'deadbee1234' });
+  nextRound(d, B);
   const r = addFinding(d, B, { file: 'a.js', text: 'Empty list case is still not handled before indexing the array' });
   assert.equal(r.kind, 'reopened'); assert.equal(r.of, 't-1'); assert.equal(r.fixSha, 'deadbee1234'); assert.equal(r.id, 't-2');
   const g = gateLocal(d, B); assert.equal(g.reopened, 1); assert.equal(g.open, 1);
@@ -53,6 +55,7 @@ test('re-flag of a WAIVED finding needs a reason; it is refused without one, rec
   const d = repo();
   addFinding(d, B, { file: 'a.js', text: 'Handle the empty list case before indexing into the array' });
   resolveFinding(d, B, 't-1', { waive: 'callers guarantee a non-empty list' });
+  nextRound(d, B);
   const refused = addFinding(d, B, { file: 'a.js', text: 'Empty list case is not handled before indexing the array' });
   assert.equal(refused.kind, 'needs-reason'); assert.equal(refused.waiver, 'callers guarantee a non-empty list');
   assert.equal(loadLedger(d, B).findings.size, 1, 'nothing recorded');
@@ -62,6 +65,7 @@ test('re-flag of a WAIVED finding needs a reason; it is refused without one, rec
   const d2 = repo();
   cli(d2, 'add', '--file', 'a.js', '--text', 'Handle the empty list case before indexing into the array');
   cli(d2, 'resolve', 't-1', '--waive', 'callers guarantee a non-empty list');
+  cli(d2, 'round');
   const cliRefused = cli(d2, 'add', '--file', 'a.js', '--text', 'Empty list case is not handled before indexing the array');
   assert.equal(cliRefused.status, 4); assert.match(cliRefused.stderr, /needs --reason/);
   assert.equal(cli(d2, 'add', '--file', 'a.js', '--text', 'Empty list case is not handled before indexing the array', '--reason', 'new caller passes user input').status, 0);
@@ -73,6 +77,7 @@ test('a different file or different words is a new finding, not a re-flag', () =
   assert.equal(addFinding(d, B, { file: 'b.js', text: 'Handle the empty list case before indexing into the array' }).kind, 'new');
   assert.equal(addFinding(d, B, { file: 'a.js', text: 'Rename the helper to describe what it returns' }).kind, 'new');
   assert.equal(addFinding(d, B, { file: 'c.js', text: 'x', code: 'const result = await fetchEverythingFromTheServer(url);' }).kind, 'new');
+  nextRound(d, B);
   assert.equal(addFinding(d, B, { file: 'c.js', text: 'totally different words entirely here', code: 'const result = await fetchEverythingFromTheServer(url);' }).kind, 'repeat', 'same long line text counts');
 });
 
@@ -195,4 +200,17 @@ test('action.yml: no unquoted scalar holds ": " (GitHub refuses to load the mani
   }
   const d = lines.find(l => l.startsWith('description:')).slice('description:'.length).trim().replace(/^'|'$/g, '');
   assert.ok(d.length <= 125, `Marketplace caps the description at 125, this is ${d.length}`);
+});
+
+test('two different findings on one file in one pass are both kept, even when they share words (found in a real session)', () => {
+  const d = repo();
+  const a = addFinding(d, B, { file: 'f.test.js', line: 90, text: 'test pins existing odd output foo.txt?a=1/index.html for the unset case; assert only that the query is not stripped', severity: 'nit' });
+  const b = addFinding(d, B, { file: 'f.test.js', line: 74, text: 'no test for hash before query (foo.txt#a?b) or backslash/leading-slash input with stripQuery', severity: 'nit' });
+  assert.equal(a.kind, 'new'); assert.equal(b.kind, 'new', 'the second finding must not be absorbed as a repeat of the first');
+  assert.equal(gateLocal(d, B).open, 2); assert.equal(gateLocal(d, B).repeats, 0);
+  // the same thing said again at the same line in the same pass is a duplicate, and is counted
+  assert.equal(addFinding(d, B, { file: 'f.test.js', line: 90, text: 'the test pins existing odd output foo.txt?a=1/index.html for the unset case' }).kind, 'repeat');
+  // and the same words in the next round are a repeat of an earlier round's finding
+  nextRound(d, B);
+  assert.equal(addFinding(d, B, { file: 'f.test.js', line: 91, text: 'test pins odd output foo.txt?a=1/index.html for the unset case still' }).kind, 'repeat');
 });

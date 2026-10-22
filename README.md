@@ -80,7 +80,7 @@ $ tollgate gate; echo $?
 | **BLOCK** | blocking findings are open, within the cap | 1 |
 | **ESCALATE** | blocking findings are open past the round cap: a human decides | 3 |
 
-Re-flags are always recorded, never refused. A repeat of an **open** finding is counted against it. A repeat of a **fixed** finding reopens it as `fix incomplete` and keeps the original sha. A repeat of a **waived** finding needs a stated reason, and the waiver is shown beside it.
+Re-flags are always recorded, never refused. A repeat of an **open** finding is counted against it. A repeat of a **fixed** finding reopens it as `fix incomplete` and keeps the original sha. A repeat of a **waived** finding needs a stated reason, and the waiver is shown beside it. Wording alone only counts as a repeat across rounds or at the same line: two different findings on one file in one pass are both kept.
 
 In Claude Code, the Stop hook blocks the agent finishing while blocking findings are open (once per stop attempt, so it informs and never traps). Past the cap it does **not** force another round: it lets the agent stop, and asks once that the final message says it escalated, with the number of findings still open.
 
@@ -127,7 +127,7 @@ Most PRs are one round (71.6%); 4.0% reach five or more. A **round** is a distin
 
 **A benchmark bug, found and fixed.** The three views (all, human, bot) shared finding objects, so a re-flag mark from one view could leak into the next. The headline "all" numbers were unaffected (that view runs first on clean objects), one count moved (kit's bot re-flags, 8 to 7), a regression test now fails on the old behaviour, and the whole run was repeated frozen from the cache with identical headline results.
 
-39 tests build real git repos with real PR refs, a fake GitHub API for the REST and GraphQL paths, and drive the hook with real hook JSON.
+40 tests build real git repos with real PR refs, a fake GitHub API for the REST and GraphQL paths, and drive the hook with real hook JSON.
 
 ## How it decides
 
