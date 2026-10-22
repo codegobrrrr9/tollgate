@@ -1,5 +1,5 @@
 name: tollgate-review
-description: Governs the review loop on agent PRs: counts rounds and re-flags, reports open threads against a round cap.
+description: 'Governs the review loop on agent PRs: counts rounds and re-flags, reports open threads against a round cap.'
 author: codegobrrrr9
 branding:
   icon: shield

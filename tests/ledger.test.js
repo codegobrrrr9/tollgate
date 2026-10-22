@@ -185,3 +185,14 @@ test('gate --github on the command line: outputs file, step summary, and --fail-
     assert.equal((await run('--fail-on', 'escalate', '--cap', '1')).status, 3);
   } finally { fake.close(); }
 });
+
+test('action.yml: no unquoted scalar holds ": " (GitHub refuses to load the manifest), description fits the Marketplace', () => {
+  const lines = readFileSync(join(ROOT, 'action.yml'), 'utf8').split('\n');
+  for (const l of lines) {
+    const m = l.match(/^\s*(?:[\w-]+): (.+)$/);
+    if (!m || /^['"|>]/.test(m[1])) continue;
+    assert.ok(!m[1].includes(': '), `unquoted value with ": " would break the manifest: ${l.trim()}`);
+  }
+  const d = lines.find(l => l.startsWith('description:')).slice('description:'.length).trim().replace(/^'|'$/g, '');
+  assert.ok(d.length <= 125, `Marketplace caps the description at 125, this is ${d.length}`);
+});

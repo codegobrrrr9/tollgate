@@ -127,7 +127,7 @@ Most PRs are one round (71.6%); 4.0% reach five or more. A **round** is a distin
 
 **A benchmark bug, found and fixed.** The three views (all, human, bot) shared finding objects, so a re-flag mark from one view could leak into the next. The headline "all" numbers were unaffected (that view runs first on clean objects), one count moved (kit's bot re-flags, 8 to 7), a regression test now fails on the old behaviour, and the whole run was repeated frozen from the cache with identical headline results.
 
-38 tests build real git repos with real PR refs, a fake GitHub API for the REST and GraphQL paths, and drive the hook with real hook JSON.
+39 tests build real git repos with real PR refs, a fake GitHub API for the REST and GraphQL paths, and drive the hook with real hook JSON.
 
 ## How it decides
 
