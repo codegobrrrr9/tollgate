@@ -214,3 +214,12 @@ test('two different findings on one file in one pass are both kept, even when th
   nextRound(d, B);
   assert.equal(addFinding(d, B, { file: 'f.test.js', line: 91, text: 'test pins odd output foo.txt?a=1/index.html for the unset case still' }).kind, 'repeat');
 });
+
+test('the ledger is kept out of git status through .git/info/exclude, and no tracked file is touched', () => {
+  const d = repo();
+  addFinding(d, B, { file: 'a.js', text: 'Handle the empty list case before indexing into the array' });
+  assert.match(readFileSync(join(d, '.git', 'info', 'exclude'), 'utf8'), /^\.tollgate\/$/m);
+  assert.equal(spawnSync('git', ['status', '--porcelain'], { cwd: d, encoding: 'utf8' }).stdout.trim(), '', 'nothing shows up as changed');
+  addFinding(d, B, { file: 'b.js', text: 'Rename the helper to describe what it returns' });
+  assert.equal(readFileSync(join(d, '.git', 'info', 'exclude'), 'utf8').match(/\.tollgate\//g).length, 1, 'written once');
+});

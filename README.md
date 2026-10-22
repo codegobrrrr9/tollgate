@@ -127,7 +127,9 @@ Most PRs are one round (71.6%); 4.0% reach five or more. A **round** is a distin
 
 **A benchmark bug, found and fixed.** The three views (all, human, bot) shared finding objects, so a re-flag mark from one view could leak into the next. The headline "all" numbers were unaffected (that view runs first on clean objects), one count moved (kit's bot re-flags, 8 to 7), a regression test now fails on the old behaviour, and the whole run was repeated frozen from the cache with identical headline results.
 
-40 tests build real git repos with real PR refs, a fake GitHub API for the REST and GraphQL paths, and drive the hook with real hook JSON.
+41 tests build real git repos with real PR refs, a fake GitHub API for the REST and GraphQL paths, and drive the hook with real hook JSON.
+
+**Run beside the other tools.** Before launch, tollgate, [alibi](https://github.com/codegobrrrr9/alibi), [shortlist](https://github.com/codegobrrrr9/shortlist) and [grudge](https://github.com/codegobrrrr9/grudge) were loaded together in one headless Sonnet session on a hono checkout (add an option, run the affected tests, review the diff, fix, answer each finding). It found three bugs the separate test suites had missed: a ledger write made alibi's test receipt stale, a second finding on the same file in the same pass was absorbed as a "repeat" of the first (and so lost), and alibi's `.gitignore` edit ended up in the feature commit. All three are fixed with tests. One session, one task: it shows the tools coexist, not that they always will.
 
 ## How it decides
 

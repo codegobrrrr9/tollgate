@@ -379,7 +379,20 @@ export async function gateGithub({ repo, pr, cap = 3, dir = null, api, token } =
 export const ledgerFile = (root) => join(root, '.tollgate', 'ledger.jsonl');
 export function currentBranch(root) { return git(['branch', '--show-current'], root) || 'HEAD'; }
 export function readConfig(root) { const c = readJson(join(root, '.tollgate.json')) || {}; return { cap: Number.isInteger(c.cap) && c.cap > 0 ? c.cap : 3 }; }
-function appendEvent(root, ev) { const f = ledgerFile(root); mkdirSync(dirname(f), { recursive: true }); appendFileSync(f, JSON.stringify({ t: new Date().toISOString(), ...ev }) + '\n'); }
+// The ledger is local working state: keep it out of `git status` through .git/info/exclude, which is never committed
+// (a tracked .gitignore edit ends up in somebody's feature commit).
+function excludeLedger(root) {
+  try {
+    const rel = git(['rev-parse', '--git-path', 'info/exclude'], root);
+    if (!rel) return;
+    const f = resolve(root, rel.trim());
+    const cur = existsSync(f) ? readFileSync(f, 'utf8') : '';
+    if (/^\s*\.tollgate\/?\s*$/m.test(cur)) return;
+    mkdirSync(dirname(f), { recursive: true });
+    appendFileSync(f, (cur && !cur.endsWith('\n') ? '\n' : '') + '.tollgate/\n');
+  } catch { /* not fatal */ }
+}
+function appendEvent(root, ev) { const f = ledgerFile(root); if (!existsSync(f)) excludeLedger(root); mkdirSync(dirname(f), { recursive: true }); appendFileSync(f, JSON.stringify({ t: new Date().toISOString(), ...ev }) + '\n'); }
 export function hasLedger(root, branch) {
   try { return readFileSync(ledgerFile(root), 'utf8').split('\n').some(l => { try { return JSON.parse(l).branch === branch; } catch { return false; } }); } catch { return false; }
 }
