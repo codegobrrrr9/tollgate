@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#0b0f14"/>
+  <text x="80" y="105" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="36" fill="#c9d4e0" font-weight="bold">Four tools, one session, four bugs no test suite had caught</text>
+  <text x="80" y="152" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="26" fill="#8899aa">tollgate + alibi + shortlist + grudge, one headless Sonnet session on hono</text>
+  <rect x="80" y="195" width="1440" height="560" rx="16" fill="#111821" stroke="#1f2a36" stroke-width="2"/>
+  <g font-family="Consolas, 'Courier New', monospace" font-size="25">
+    <text x="115" y="262" fill="#6b7a8c">1</text>
+    <text x="165" y="262" fill="#c9d4e0">tollgate wrote its ledger</text>
+    <text x="165" y="298" fill="#ff6b6b">alibi's test receipt went STALE</text>
+    <text x="115" y="378" fill="#6b7a8c">2</text>
+    <text x="165" y="378" fill="#c9d4e0">a second finding on the same file</text>
+    <text x="165" y="414" fill="#ff6b6b">absorbed as a "repeat" of the first, and lost</text>
+    <text x="115" y="494" fill="#6b7a8c">3</text>
+    <text x="165" y="494" fill="#c9d4e0">alibi edited the tracked .gitignore</text>
+    <text x="165" y="530" fill="#ff6b6b">the feature commit carried it in</text>
+    <text x="115" y="610" fill="#6b7a8c">4</text>
+    <text x="165" y="610" fill="#c9d4e0">alibi ran bash commands through cmd.exe</text>
+    <text x="165" y="646" fill="#ff6b6b">a failing test piped into tail got a VALID receipt</text>
+    <text x="115" y="715" fill="#6b7a8c" font-size="22">all four fixed, each with a regression test</text>
+  </g>
+  <text x="80" y="810" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="26" fill="#ffd166" font-weight="bold">Final run: 7 of 137 test files, VALID receipt, 4 findings kept, $0.32</text>
+  <text x="80" y="858" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#6b7a8c">github.com/codegobrrrr9/tollgate · one session, one task: the tools coexist, not a proof they always will</text>
+</svg>
